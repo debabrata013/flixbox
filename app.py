@@ -145,6 +145,7 @@ def stream_media(media_id):
                 "-map", "0:v:0",
                 "-map", f"0:a:{track_idx}",
                 "-c:v", "copy",
+                "-tag:v", "hvc1",
                 "-c:a", "aac",
                 "-b:a", "192k",
                 "-f", "mp4",

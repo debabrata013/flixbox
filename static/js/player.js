@@ -11,43 +11,59 @@ class FlixPlayer {
     this.video = document.getElementById("mainVideo");
     this.hud = document.getElementById("playerHud");
     
-    // UI Elements
+    // Top Bar Elements
+    this.btnBack = document.getElementById("btnPlayerBack");
+    this.btnTopRotate = document.getElementById("btnTopRotate");
+    this.playerTitle = document.getElementById("playerTitle");
+    this.playerSubtitle = document.getElementById("playerSubtitle");
+    
+    // Center Controls Cluster (Netflix Trio)
+    this.btnCenterPlayMain = document.getElementById("btnCenterPlayMain");
+    this.btnCenterRewind = document.getElementById("btnCenterRewind");
+    this.btnCenterForward = document.getElementById("btnCenterForward");
+    
+    // Bottom Bar Controls
     this.btnPlay = document.getElementById("btnPlay");
-    this.btnCenterPlay = document.getElementById("playerCenterPlay");
     this.btnSkipBack = document.getElementById("btnSkipBack");
     this.btnSkipForward = document.getElementById("btnSkipForward");
     this.btnMute = document.getElementById("btnMute");
+    this.volumeSlider = document.getElementById("volumeSlider");
     this.btnFullscreen = document.getElementById("btnFullscreen");
     this.btnPip = document.getElementById("btnPip");
-    this.btnBack = document.getElementById("btnPlayerBack");
     this.btnRotate = document.getElementById("btnRotate");
-    this.btnTopRotate = document.getElementById("btnTopRotate");
     
+    // Timeline Elements
     this.timelineContainer = document.getElementById("timelineContainer");
     this.timelineProgress = document.getElementById("timelineProgress");
     this.timelineBuffered = document.getElementById("timelineBuffered");
     this.timelineThumb = document.getElementById("timelineThumb");
     this.timelineTooltip = document.getElementById("timelineTooltip");
+    this.timeCurrent = document.getElementById("timeCurrent");
+    this.timeTotal = document.getElementById("timeTotal");
     
+    // Spinners & Seek Ripples
     this.playerSpinner = document.getElementById("playerSpinner");
     this.seekRippleLeft = document.getElementById("seekRippleLeft");
     this.seekRippleRight = document.getElementById("seekRippleRight");
     
-    this.timeCurrent = document.getElementById("timeCurrent");
-    this.timeTotal = document.getElementById("timeTotal");
-    this.playerTitle = document.getElementById("playerTitle");
-    this.playerSubtitle = document.getElementById("playerSubtitle");
+    // Audio Elements & Custom Drawer
+    this.btnAudioPill = document.getElementById("btnAudioPill");
+    this.audioPillText = document.getElementById("audioPillText");
+    this.audioDrawerBackdrop = document.getElementById("audioDrawerBackdrop");
+    this.audioDrawerList = document.getElementById("audioDrawerList");
+    this.btnAudioDrawerClose = document.getElementById("btnAudioDrawerClose");
     
-    // Speed Elements
-    this.speedSelect = document.getElementById("speedSelect");
-    this.speedCurrentLabel = document.getElementById("speedCurrentLabel");
+    // Speed Elements & Custom Drawer
+    this.btnSpeedPill = document.getElementById("btnSpeedPill");
+    this.speedPillText = document.getElementById("speedPillText");
+    this.speedDrawerBackdrop = document.getElementById("speedDrawerBackdrop");
+    this.speedDrawerList = document.getElementById("speedDrawerList");
+    this.btnSpeedDrawerClose = document.getElementById("btnSpeedDrawerClose");
     
-    // Audio Language Elements
-    this.audioControlWrap = document.getElementById("audioControlWrap");
-    this.audioSelect = document.getElementById("audioSelect");
-    this.audioCurrentLabel = document.getElementById("audioCurrentLabel");
+    // Center Notification Toast
     this.playerToast = document.getElementById("playerToast");
     
+    // Internal Player State
     this.currentMedia = null;
     this.currentAudioTrack = null;
     this.streamOffset = 0;
@@ -63,50 +79,80 @@ class FlixPlayer {
 
   initEvents() {
     // Play / Pause
-    this.btnPlay.addEventListener("click", () => this.togglePlay());
-    this.btnCenterPlay.addEventListener("click", () => this.togglePlay());
+    if (this.btnPlay) this.btnPlay.addEventListener("click", () => this.togglePlay());
+    if (this.btnCenterPlayMain) this.btnCenterPlayMain.addEventListener("click", () => this.togglePlay());
     this.video.addEventListener("click", () => this.onVideoClick());
 
-    // Skip Buttons
-    this.btnSkipBack.addEventListener("click", () => {
+    // Skip 10s (Center & Bottom)
+    const onRewind = () => {
       this.seekBy(-10);
       this.showSeekRipple("left");
-    });
-    this.btnSkipForward.addEventListener("click", () => {
+    };
+    const onForward = () => {
       this.seekBy(10);
       this.showSeekRipple("right");
-    });
+    };
 
-    // Mute
-    this.btnMute.addEventListener("click", () => this.toggleMute());
+    if (this.btnSkipBack) this.btnSkipBack.addEventListener("click", onRewind);
+    if (this.btnCenterRewind) this.btnCenterRewind.addEventListener("click", onRewind);
+    if (this.btnSkipForward) this.btnSkipForward.addEventListener("click", onForward);
+    if (this.btnCenterForward) this.btnCenterForward.addEventListener("click", onForward);
+
+    // Mute & Volume
+    if (this.btnMute) this.btnMute.addEventListener("click", () => this.toggleMute());
+    if (this.volumeSlider) {
+      this.volumeSlider.addEventListener("input", (e) => {
+        this.video.volume = parseFloat(e.target.value);
+        this.video.muted = this.video.volume === 0;
+        this.updateVolumeIcon();
+      });
+    }
 
     // Fullscreen & PiP
-    this.btnFullscreen.addEventListener("click", () => this.toggleFullscreen());
-    this.btnPip.addEventListener("click", () => this.togglePip());
+    if (this.btnFullscreen) this.btnFullscreen.addEventListener("click", () => this.toggleFullscreen());
+    if (this.btnPip) this.btnPip.addEventListener("click", () => this.togglePip());
 
     // Rotation / Orientation Lock
-    if (this.btnRotate) {
-      this.btnRotate.addEventListener("click", () => this.toggleRotate());
-    }
-    if (this.btnTopRotate) {
-      this.btnTopRotate.addEventListener("click", () => this.toggleRotate());
-    }
+    if (this.btnRotate) this.btnRotate.addEventListener("click", () => this.toggleRotate());
+    if (this.btnTopRotate) this.btnTopRotate.addEventListener("click", () => this.toggleRotate());
 
     // Close Player
-    this.btnBack.addEventListener("click", () => this.close());
+    if (this.btnBack) this.btnBack.addEventListener("click", () => this.close());
 
-    // Speed Selector
-    this.speedSelect.addEventListener("change", (e) => {
-      const val = parseFloat(e.target.value);
-      this.video.playbackRate = val;
-      if (this.speedCurrentLabel) {
-        this.speedCurrentLabel.textContent = `${val}x`;
-      }
-      this.showToast(`Speed: ${val}x`);
-    });
+    // Audio Drawer
+    if (this.btnAudioPill) {
+      this.btnAudioPill.addEventListener("click", () => this.openAudioDrawer());
+    }
+    if (this.btnAudioDrawerClose) {
+      this.btnAudioDrawerClose.addEventListener("click", () => this.closeAudioDrawer());
+    }
+    if (this.audioDrawerBackdrop) {
+      this.audioDrawerBackdrop.addEventListener("click", (e) => {
+        if (e.target === this.audioDrawerBackdrop) this.closeAudioDrawer();
+      });
+    }
 
-    // Audio Language Selector
-    this.audioSelect.addEventListener("change", (e) => this.onAudioTrackChange(e));
+    // Speed Drawer
+    if (this.btnSpeedPill) {
+      this.btnSpeedPill.addEventListener("click", () => this.openSpeedDrawer());
+    }
+    if (this.btnSpeedDrawerClose) {
+      this.btnSpeedDrawerClose.addEventListener("click", () => this.closeSpeedDrawer());
+    }
+    if (this.speedDrawerBackdrop) {
+      this.speedDrawerBackdrop.addEventListener("click", (e) => {
+        if (e.target === this.speedDrawerBackdrop) this.closeSpeedDrawer();
+      });
+    }
+    if (this.speedDrawerList) {
+      this.speedDrawerList.querySelectorAll(".drawer-item").forEach(item => {
+        item.addEventListener("click", () => {
+          const spd = parseFloat(item.getAttribute("data-speed"));
+          this.setPlaybackSpeed(spd);
+          this.closeSpeedDrawer();
+        });
+      });
+    }
 
     // Timeline Updates
     this.video.addEventListener("timeupdate", () => this.onTimeUpdate());
@@ -162,7 +208,6 @@ class FlixPlayer {
   }
 
   onVideoClick() {
-    // If HUD is hidden on mobile, tap brings it back; else toggles play
     if (this.hud.classList.contains("idle")) {
       this.resetIdleTimer();
     } else {
@@ -172,7 +217,6 @@ class FlixPlayer {
 
   async enterLandscape() {
     try {
-      // 1. Request fullscreen on player modal
       if (!document.fullscreenElement) {
         if (this.modal.requestFullscreen) {
           await this.modal.requestFullscreen().catch(() => {});
@@ -182,10 +226,8 @@ class FlixPlayer {
         }
       }
 
-      // 2. Lock screen orientation to landscape
       if (window.screen && screen.orientation && screen.orientation.lock) {
         await screen.orientation.lock("landscape").catch(() => {
-          // If browser restricts lock without permission or in portrait mode
           if (window.innerWidth < window.innerHeight) {
             this.modal.classList.add("force-landscape");
           }
@@ -223,7 +265,6 @@ class FlixPlayer {
       }
       this.showToast("Orientation: Portrait");
     } else if (isPortrait) {
-      // Try orientation API first
       let locked = false;
       if (screen.orientation && screen.orientation.lock) {
         try {
@@ -236,10 +277,9 @@ class FlixPlayer {
       }
       if (!locked) {
         this.modal.classList.add("force-landscape");
-        this.showToast("Orientation: Landscape (Forced)");
+        this.showToast("Orientation: Landscape (Cinema)");
       }
     } else {
-      // In landscape already: toggle unlock
       if (screen.orientation && screen.orientation.lock) {
         try {
           await screen.orientation.lock("portrait");
@@ -272,17 +312,6 @@ class FlixPlayer {
     }, 650);
   }
 
-  animateCenterPlay(isPlaying) {
-    if (!this.btnCenterPlay) return;
-    const playIcon = `<svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
-    const pauseIcon = `<svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
-    this.btnCenterPlay.innerHTML = isPlaying ? playIcon : pauseIcon;
-    this.btnCenterPlay.classList.add("pop");
-    setTimeout(() => {
-      this.btnCenterPlay.classList.remove("pop");
-    }, 450);
-  }
-
   open(media) {
     this.currentMedia = media;
     this.playerTitle.textContent = media.clean_title || media.title;
@@ -296,17 +325,13 @@ class FlixPlayer {
 
     // Setup Multi-Audio Track Controls
     if (tracks && tracks.length > 1) {
-      this.audioControlWrap.style.display = "inline-flex";
-      this.audioSelect.innerHTML = tracks.map(t => `
-        <option value="${t.track_index}">${t.label}</option>
-      `).join("");
-      
+      this.btnAudioPill.style.display = "inline-flex";
       this.currentAudioTrack = tracks[0].track_index;
-      this.audioSelect.value = this.currentAudioTrack;
-      this.audioCurrentLabel.textContent = tracks[0].language_label;
+      this.audioPillText.textContent = tracks[0].language_label;
+      this.renderAudioDrawerOptions(tracks);
+      
+      // Start stream
       this.isRemuxing = true;
-
-      // Start stream with first audio track
       this.streamOffset = (resumePos > 5 && resumePos < (media.duration - 15)) ? resumePos : 0;
       this.video.src = `/stream/${media.id}?audio=${this.currentAudioTrack}&start=${this.streamOffset.toFixed(2)}`;
     } else if (tracks && tracks.length === 1) {
@@ -321,9 +346,9 @@ class FlixPlayer {
         this.currentAudioTrack = null;
         this.video.src = `/stream/${media.id}`;
       }
-      this.audioControlWrap.style.display = "none";
+      this.btnAudioPill.style.display = "none";
     } else {
-      this.audioControlWrap.style.display = "none";
+      this.btnAudioPill.style.display = "none";
       this.isRemuxing = false;
       this.currentAudioTrack = null;
       this.video.src = `/stream/${media.id}`;
@@ -332,7 +357,7 @@ class FlixPlayer {
     this.modal.classList.add("active");
     this.resetIdleTimer();
 
-    // Auto-enter Landscape on phone devices
+    // Auto-enter Landscape on phones
     this.enterLandscape();
 
     // Auto-resume for direct stream mode
@@ -347,28 +372,62 @@ class FlixPlayer {
       this.video.play().catch(() => {});
     }
 
+    // Reset speed pill to 1.0x
+    this.setPlaybackSpeed(1.0);
+
     // Start progress sync interval (every 5 seconds)
     clearInterval(this.progressInterval);
     this.progressInterval = setInterval(() => this.syncProgress(), 5000);
   }
 
-  onAudioTrackChange(e) {
-    const newTrackIdx = parseInt(e.target.value);
+  renderAudioDrawerOptions(tracks) {
+    if (!this.audioDrawerList) return;
+    this.audioDrawerList.innerHTML = tracks.map(t => {
+      const isActive = t.track_index === this.currentAudioTrack;
+      return `
+        <div class="drawer-item ${isActive ? 'active' : ''}" data-idx="${t.track_index}">
+          <span>${t.label}</span>
+          ${isActive ? '<span class="drawer-check">✓</span>' : ''}
+        </div>
+      `;
+    }).join("");
+
+    this.audioDrawerList.querySelectorAll(".drawer-item").forEach(item => {
+      item.onclick = () => {
+        const idx = parseInt(item.getAttribute("data-idx"));
+        this.switchAudioTrack(idx);
+        this.closeAudioDrawer();
+      };
+    });
+  }
+
+  openAudioDrawer() {
+    if (this.audioDrawerBackdrop) {
+      this.audioDrawerBackdrop.classList.add("active");
+    }
+  }
+
+  closeAudioDrawer() {
+    if (this.audioDrawerBackdrop) {
+      this.audioDrawerBackdrop.classList.remove("active");
+    }
+  }
+
+  switchAudioTrack(newTrackIdx) {
     if (isNaN(newTrackIdx)) return;
+    const tracks = this.currentMedia?.audio_tracks || [];
+    const target = tracks.find(t => t.track_index === newTrackIdx);
+    if (!target) return;
 
     const currentPos = this.getCurrentTime();
     this.currentAudioTrack = newTrackIdx;
     this.streamOffset = currentPos;
     this.isRemuxing = true;
 
-    // Update label on audio button
-    const selectedOpt = this.audioSelect.options[this.audioSelect.selectedIndex];
-    const trackLabel = selectedOpt ? selectedOpt.textContent : `Track ${newTrackIdx + 1}`;
-    const shortName = trackLabel.split(" ")[0];
-    this.audioCurrentLabel.textContent = shortName;
-
-    // Display center HUD notification toast
-    this.showToast(`Audio: ${trackLabel}`);
+    // Update pill text
+    this.audioPillText.textContent = target.language_label;
+    this.renderAudioDrawerOptions(tracks);
+    this.showToast(`Audio: ${target.label}`);
 
     // Switch video stream source seamlessly at current position
     const wasPaused = this.video.paused;
@@ -378,6 +437,41 @@ class FlixPlayer {
         this.video.play().catch(() => {});
       }
     }, { once: true });
+  }
+
+  openSpeedDrawer() {
+    if (this.speedDrawerBackdrop) {
+      this.speedDrawerBackdrop.classList.add("active");
+    }
+  }
+
+  closeSpeedDrawer() {
+    if (this.speedDrawerBackdrop) {
+      this.speedDrawerBackdrop.classList.remove("active");
+    }
+  }
+
+  setPlaybackSpeed(speed) {
+    this.video.playbackRate = speed;
+    if (this.speedPillText) {
+      this.speedPillText.textContent = `${speed}x`;
+    }
+    if (this.speedDrawerList) {
+      this.speedDrawerList.querySelectorAll(".drawer-item").forEach(item => {
+        const itemSpeed = parseFloat(item.getAttribute("data-speed"));
+        if (Math.abs(itemSpeed - speed) < 0.05) {
+          item.classList.add("active");
+          if (!item.querySelector(".drawer-check")) {
+            item.innerHTML += `<span class="drawer-check">✓</span>`;
+          }
+        } else {
+          item.classList.remove("active");
+          const chk = item.querySelector(".drawer-check");
+          if (chk) chk.remove();
+        }
+      });
+    }
+    this.showToast(`Speed: ${speed}x`);
   }
 
   showToast(message) {
@@ -392,7 +486,7 @@ class FlixPlayer {
     clearTimeout(this.toastTimeout);
     this.toastTimeout = setTimeout(() => {
       this.playerToast.classList.remove("show");
-    }, 2500);
+    }, 2200);
   }
 
   getCurrentTime() {
@@ -413,30 +507,38 @@ class FlixPlayer {
     clearTimeout(this.toastTimeout);
     clearTimeout(this.rippleTimeout);
     
+    this.closeAudioDrawer();
+    this.closeSpeedDrawer();
     this.exitLandscape();
+    
     this.video.pause();
     this.video.src = "";
     this.modal.classList.remove("active");
 
-    // Refresh homepage continue watching
     if (window.loadHomeData) window.loadHomeData();
   }
 
   togglePlay() {
     if (this.video.paused) {
-      this.video.play().then(() => {
-        this.animateCenterPlay(true);
-      }).catch(() => {});
+      this.video.play().catch(() => {});
     } else {
       this.video.pause();
-      this.animateCenterPlay(false);
     }
   }
 
   updatePlayIcon(isPlaying) {
     const playIcon = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
     const pauseIcon = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
-    this.btnPlay.innerHTML = isPlaying ? pauseIcon : playIcon;
+    
+    const centerPlayIcon = `<svg width="42" height="42" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
+    const centerPauseIcon = `<svg width="42" height="42" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
+    
+    if (this.btnPlay) {
+      this.btnPlay.innerHTML = isPlaying ? pauseIcon : playIcon;
+    }
+    if (this.btnCenterPlayMain) {
+      this.btnCenterPlayMain.innerHTML = isPlaying ? centerPauseIcon : centerPlayIcon;
+    }
   }
 
   seekBy(seconds) {
@@ -517,10 +619,19 @@ class FlixPlayer {
 
   toggleMute() {
     this.video.muted = !this.video.muted;
-    const volIcon = `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`;
-    const muteIcon = `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>`;
-    this.btnMute.innerHTML = this.video.muted ? muteIcon : volIcon;
+    if (this.volumeSlider) {
+      this.volumeSlider.value = this.video.muted ? 0 : this.video.volume;
+    }
+    this.updateVolumeIcon();
     this.showToast(this.video.muted ? "Muted" : "Unmuted");
+  }
+
+  updateVolumeIcon() {
+    const volIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`;
+    const muteIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>`;
+    if (this.btnMute) {
+      this.btnMute.innerHTML = this.video.muted || this.video.volume === 0 ? muteIcon : volIcon;
+    }
   }
 
   toggleFullscreen() {
@@ -601,7 +712,17 @@ class FlixPlayer {
 
   onKeyDown(e) {
     if (!this.modal.classList.contains("active")) return;
-    if (e.key === "Escape") this.close();
+    if (e.key === "Escape") {
+      if (this.audioDrawerBackdrop && this.audioDrawerBackdrop.classList.contains("active")) {
+        this.closeAudioDrawer();
+        return;
+      }
+      if (this.speedDrawerBackdrop && this.speedDrawerBackdrop.classList.contains("active")) {
+        this.closeSpeedDrawer();
+        return;
+      }
+      this.close();
+    }
     if (e.key === " " || e.key === "k") { e.preventDefault(); this.togglePlay(); }
     if (e.key === "ArrowLeft" || e.key === "j") { 
       e.preventDefault(); 
