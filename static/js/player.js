@@ -80,6 +80,24 @@ class FlixPlayer {
 
     // Keyboard Shortcuts
     window.addEventListener("keydown", (e) => this.onKeyDown(e));
+
+    // Double-tap on mobile screen to seek -10s or +10s
+    let lastTapTime = 0;
+    this.video.addEventListener("touchend", (e) => {
+      const now = new Date().getTime();
+      const diff = now - lastTapTime;
+      if (diff < 320 && diff > 50 && e.changedTouches.length > 0) {
+        const touch = e.changedTouches[0];
+        const half = window.innerWidth / 2;
+        if (touch.clientX < half) {
+          this.seekBy(-10);
+        } else {
+          this.seekBy(10);
+        }
+        e.preventDefault();
+      }
+      lastTapTime = now;
+    });
   }
 
   open(media) {
