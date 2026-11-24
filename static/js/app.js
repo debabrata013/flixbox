@@ -61,7 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
         heroBadgeRes.textContent = feat.resolution || "1080p FHD";
         heroBadgeYear.textContent = feat.year || (feat.category === "series" ? "Web Series" : "Cinema");
         heroSynopsis.textContent = `${feat.category === "series" ? 'Exclusive Web Series' : 'Blockbuster Movie'} available in ultra-low latency streaming on your private FlixBox node.`;
-        heroBackdrop.src = feat.thumbnail_file ? `/thumbnails/${feat.thumbnail_file}` : '';
+        heroBackdrop.src = feat.thumbnail_file ? `/thumbnails/${feat.thumbnail_file}?v=2` : '';
         btnHeroPlay.onclick = () => player.open(feat);
       } else {
         heroSection.style.display = "none";
@@ -110,7 +110,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderCard(item, isProgress = false) {
-    const thumbUrl = item.thumbnail_file ? `/thumbnails/${item.thumbnail_file}` : '';
+    const thumbUrl = item.thumbnail_file ? `/thumbnails/${item.thumbnail_file}?v=2` : '';
     const progressFill = isProgress && item.progress_percentage ? `
       <div class="card-progress-bar">
         <div class="card-progress-fill" style="width: ${item.progress_percentage}%"></div>
@@ -138,7 +138,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderSeriesCard(series) {
-    const thumbUrl = series.thumbnail_file ? `/thumbnails/${series.thumbnail_file}` : '';
+    const thumbUrl = series.thumbnail_file ? `/thumbnails/${series.thumbnail_file}?v=2` : '';
     const epCount = series.total_episodes || 1;
     return `
       <div class="media-card" data-series-name="${encodeURIComponent(series.series_name)}" data-type="series">

@@ -1,7 +1,7 @@
 import os
 import re
 import mimetypes
-from flask import Flask, render_template, request, Response, jsonify, send_from_directory, abort
+from flask import Flask, render_template, request, Response, jsonify, send_from_directory, abort, make_response
 from config import Config
 from db import (
     init_db, get_media_by_id, get_all_movies, get_all_series_grouped,
@@ -93,7 +93,11 @@ def api_scan():
 
 @app.route("/thumbnails/<path:filename>")
 def serve_thumbnail(filename):
-    return send_from_directory(Config.THUMBNAIL_DIR, filename)
+    resp = make_response(send_from_directory(Config.THUMBNAIL_DIR, filename))
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 @app.route("/stream/<int:media_id>")
 def stream_media(media_id):

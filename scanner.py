@@ -229,7 +229,7 @@ def scan_folder(folder_path, default_category=None, force_refresh=False):
                         series_name = meta["clean_title"]
                 
                 h = hashlib.md5(full_path.encode()).hexdigest()[:12]
-                thumb_file = f"thumb_{h}.jpg"
+                thumb_file = f"thumb_{h}_v2.jpg"
                 actual_thumb = extract_thumbnail(
                     full_path, thumb_file, meta["clean_title"],
                     meta["resolution"], meta["year"],
