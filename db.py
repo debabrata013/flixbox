@@ -33,9 +33,16 @@ def init_db():
                 genre TEXT DEFAULT 'Cinema',
                 thumbnail_file TEXT,
                 backdrop_file TEXT,
+                audio_tracks TEXT DEFAULT '[]',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        
+        # Ensure audio_tracks column exists for existing databases
+        try:
+            cursor.execute("ALTER TABLE media ADD COLUMN audio_tracks TEXT DEFAULT '[]'")
+        except sqlite3.OperationalError:
+            pass
         
         # Watch History Table
         cursor.execute("""
@@ -60,15 +67,39 @@ def init_db():
         
         conn.commit()
 
+def _format_media_row(row):
+    if not row:
+        return None
+    d = dict(row)
+    raw_tracks = d.get("audio_tracks")
+    if raw_tracks:
+        if isinstance(raw_tracks, str):
+            try:
+                d["audio_tracks"] = json.loads(raw_tracks)
+            except Exception:
+                d["audio_tracks"] = []
+        elif not isinstance(raw_tracks, list):
+            d["audio_tracks"] = []
+    else:
+        d["audio_tracks"] = []
+    return d
+
 def upsert_media(item):
     with get_db() as conn:
         cursor = conn.cursor()
+        
+        audio_json = item.get('audio_tracks')
+        if isinstance(audio_json, list):
+            audio_json = json.dumps(audio_json)
+        elif not audio_json:
+            audio_json = '[]'
+            
         cursor.execute("""
             INSERT INTO media (
                 file_path, title, clean_title, category, series_name,
                 season, episode, file_size, duration, resolution,
-                year, genre, thumbnail_file, backdrop_file
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                year, genre, thumbnail_file, backdrop_file, audio_tracks
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(file_path) DO UPDATE SET
                 title=excluded.title,
                 clean_title=excluded.clean_title,
@@ -82,7 +113,8 @@ def upsert_media(item):
                 year=excluded.year,
                 genre=excluded.genre,
                 thumbnail_file=COALESCE(excluded.thumbnail_file, media.thumbnail_file),
-                backdrop_file=COALESCE(excluded.backdrop_file, media.backdrop_file)
+                backdrop_file=COALESCE(excluded.backdrop_file, media.backdrop_file),
+                audio_tracks=COALESCE(excluded.audio_tracks, media.audio_tracks)
         """, (
             item['file_path'],
             item['title'],
@@ -97,7 +129,8 @@ def upsert_media(item):
             item.get('year'),
             item.get('genre', 'Cinema'),
             item.get('thumbnail_file'),
-            item.get('backdrop_file')
+            item.get('backdrop_file'),
+            audio_json
         ))
         conn.commit()
         return cursor.lastrowid
@@ -116,7 +149,7 @@ def get_media_by_id(media_id):
             WHERE m.id = ?
         """, (media_id,))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        return _format_media_row(row)
 
 def get_all_movies():
     with get_db() as conn:
@@ -130,7 +163,7 @@ def get_all_movies():
             WHERE m.category = 'movie'
             ORDER BY m.created_at DESC
         """)
-        return [dict(r) for r in cursor.fetchall()]
+        return [_format_media_row(r) for r in cursor.fetchall()]
 
 def get_all_series_grouped():
     with get_db() as conn:
@@ -144,7 +177,7 @@ def get_all_series_grouped():
             WHERE m.category = 'series'
             ORDER BY m.series_name ASC, m.season ASC, m.episode ASC
         """)
-        rows = [dict(r) for r in cursor.fetchall()]
+        rows = [_format_media_row(r) for r in cursor.fetchall()]
         
         # Group by series_name
         grouped = {}
@@ -182,7 +215,7 @@ def get_continue_watching():
             ORDER BY w.last_watched DESC
             LIMIT 12
         """)
-        return [dict(r) for r in cursor.fetchall()]
+        return [_format_media_row(r) for r in cursor.fetchall()]
 
 def get_recently_added(limit=15):
     with get_db() as conn:
@@ -196,7 +229,7 @@ def get_recently_added(limit=15):
             ORDER BY m.id DESC
             LIMIT ?
         """, (limit,))
-        return [dict(r) for r in cursor.fetchall()]
+        return [_format_media_row(r) for r in cursor.fetchall()]
 
 def update_watch_progress(media_id, progress_seconds, total_seconds):
     if total_seconds <= 0:
@@ -232,4 +265,4 @@ def search_media(query):
             ORDER BY m.id DESC
             LIMIT 30
         """, (q, q, q, q))
-        return [dict(r) for r in cursor.fetchall()]
+        return [_format_media_row(r) for r in cursor.fetchall()]

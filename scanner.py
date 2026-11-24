@@ -7,8 +7,25 @@ import random
 from config import Config
 from db import init_db, upsert_media, get_db
 
+LANG_MAP = {
+    "hin": "Hindi", "hindi": "Hindi",
+    "eng": "English", "english": "English",
+    "spa": "Spanish", "spanish": "Spanish",
+    "tam": "Tamil", "tamil": "Tamil",
+    "tel": "Telugu", "telugu": "Telugu",
+    "mal": "Malayalam", "kan": "Kannada",
+    "ben": "Bengali", "pan": "Punjabi",
+    "mar": "Marathi", "guj": "Gujarati",
+    "kor": "Korean", "jpn": "Japanese",
+    "fre": "French", "fra": "French",
+    "ger": "German", "deu": "German",
+    "ita": "Italian", "rus": "Russian",
+    "por": "Portuguese", "chi": "Chinese",
+    "zho": "Chinese", "ara": "Arabic",
+    "und": "Default", "": "Audio Track"
+}
+
 def clean_media_title(filename):
-    # Remove file extension
     name, ext = os.path.splitext(filename)
     
     # Extract resolution
@@ -94,6 +111,58 @@ def get_video_duration(video_path):
     except Exception:
         pass
     return 0.0
+
+def get_media_audio_tracks(video_path):
+    """
+    Extracts all audio tracks and metadata (index, language, title, channels, codec)
+    using ffprobe.
+    """
+    try:
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "stream=index,codec_name,channels:stream_tags=language,title",
+            "-select_streams", "a",
+            "-of", "json",
+            video_path
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=8)
+        if res.returncode == 0 and res.stdout.strip():
+            info = json.loads(res.stdout)
+            streams = info.get("streams", [])
+            tracks = []
+            
+            for idx, s in enumerate(streams):
+                tags = s.get("tags") or {}
+                raw_lang = (tags.get("language") or "").lower().strip()
+                lang_name = LANG_MAP.get(raw_lang, raw_lang.title() if raw_lang else f"Track {idx + 1}")
+                
+                title = tags.get("title") or ""
+                channels = s.get("channels") or 2
+                codec = s.get("codec_name") or ""
+                
+                # Channel label: 6 -> 5.1, 8 -> 7.1, 2 -> Stereo
+                ch_label = "5.1" if channels == 6 else ("7.1" if channels == 8 else ("Stereo" if channels == 2 else f"{channels}ch"))
+                
+                label_parts = [lang_name]
+                if title and title.lower() != lang_name.lower():
+                    label_parts.append(f"({title})")
+                label_parts.append(f"[{ch_label}]")
+                display_label = " ".join(label_parts)
+                
+                tracks.append({
+                    "stream_index": s.get("index"),
+                    "track_index": idx,
+                    "codec": codec,
+                    "channels": channels,
+                    "language": raw_lang or "und",
+                    "language_label": lang_name,
+                    "title": title,
+                    "label": display_label
+                })
+            return tracks
+    except Exception as e:
+        print(f"Error probing audio tracks for {video_path}: {e}")
+    return []
 
 def generate_svg_thumbnail(title, resolution, year, output_path):
     colors = [
@@ -210,6 +279,7 @@ def scan_folder(folder_path, default_category=None, force_refresh=False):
                     
                 meta = clean_media_title(f)
                 duration = get_video_duration(full_path)
+                audio_tracks = get_media_audio_tracks(full_path)
                 
                 # Determine category
                 if default_category:
@@ -250,13 +320,31 @@ def scan_folder(folder_path, default_category=None, force_refresh=False):
                     "year": meta["year"],
                     "genre": "Web Series" if cat == "series" else "Feature Film",
                     "thumbnail_file": actual_thumb,
-                    "backdrop_file": actual_thumb
+                    "backdrop_file": actual_thumb,
+                    "audio_tracks": audio_tracks
                 }
                 
                 upsert_media(item)
                 scanned_items.append(item)
                 
     return scanned_items
+
+def backfill_audio_tracks():
+    """Checks existing media items in DB and extracts audio tracks if missing or empty"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, file_path, audio_tracks FROM media")
+        rows = cursor.fetchall()
+        for r in rows:
+            needs_fill = False
+            raw = r["audio_tracks"]
+            if not raw or raw == "[]" or raw is None:
+                needs_fill = True
+            if needs_fill and os.path.exists(r["file_path"]):
+                tracks = get_media_audio_tracks(r["file_path"])
+                if tracks:
+                    cursor.execute("UPDATE media SET audio_tracks = ? WHERE id = ?", (json.dumps(tracks), r["id"]))
+        conn.commit()
 
 def cleanup_orphaned_media():
     """Removes any media records that are not in /sdcard/FlixBox or no longer exist on disk"""
@@ -286,6 +374,7 @@ def run_library_scan(force_refresh=False):
     """Scans ONLY the dedicated /sdcard/FlixBox/Movies and /sdcard/FlixBox/Series folders"""
     init_db()
     cleanup_orphaned_media()
+    backfill_audio_tracks()
     total = 0
     
     # 1. Primary Movies folder ONLY

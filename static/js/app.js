@@ -257,6 +257,22 @@ document.addEventListener("DOMContentLoaded", () => {
     detailYear.textContent = media.year || '2025';
     detailDuration.textContent = formatDuration(media.duration);
     detailFileSize.textContent = formatBytes(media.file_size);
+
+    const detailAudioBadge = document.getElementById("detailAudioBadge");
+    const tracks = media.audio_tracks || [];
+    if (detailAudioBadge) {
+      if (tracks && tracks.length > 1) {
+        const langs = tracks.map(t => t.language_label).join(", ");
+        detailAudioBadge.textContent = `${tracks.length} Audios (${langs})`;
+        detailAudioBadge.style.display = "inline-block";
+      } else if (tracks && tracks.length === 1) {
+        detailAudioBadge.textContent = tracks[0].language_label;
+        detailAudioBadge.style.display = "inline-block";
+      } else {
+        detailAudioBadge.style.display = "none";
+      }
+    }
+
     detailSynopsis.textContent = media.category === 'series'
       ? `Web Series episode: ${media.series_name} (Season ${media.season}, Episode ${media.episode}).`
       : `Complete feature film. Stream directly with low data consumption and zero buffering.`;

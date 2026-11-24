@@ -1,6 +1,7 @@
 import os
 import re
 import mimetypes
+import subprocess
 from flask import Flask, render_template, request, Response, jsonify, send_from_directory, abort, make_response
 from config import Config
 from db import (
@@ -102,28 +103,93 @@ def serve_thumbnail(filename):
 @app.route("/stream/<int:media_id>")
 def stream_media(media_id):
     """
-    HTTP 206 Partial Content video streaming engine.
-    Allows instant start, zero buffering, and ultra-low data consumption.
+    Video streaming engine with dynamic multi-audio track selection.
+    - If audio parameter is passed (e.g. ?audio=1&start=120) or if audio codec is EAC3/DTS:
+      Fast FFmpeg stream copying with AAC transcode (instant 0.2s start, zero video re-encoding).
+    - Otherwise:
+      High performance direct HTTP 206 Partial Content byte-range streaming.
     """
     item = get_media_by_id(media_id)
     if not item or not os.path.exists(item["file_path"]):
         abort(404)
         
     path = item["file_path"]
-    size = os.path.getsize(path)
+    audio_param = request.args.get("audio")
+    start_param = request.args.get("start", "0")
     
-    # Guess mime type
+    # Check if primary audio codec needs AAC conversion for browser compatibility
+    tracks = item.get("audio_tracks") or []
+    needs_transcode = False
+    if tracks and len(tracks) > 0:
+        first_codec = (tracks[0].get("codec") or "").lower()
+        if first_codec in ("eac3", "dts", "ac3", "truehd", "mlp"):
+            needs_transcode = True
+            
+    # If audio track selected OR audio needs browser-compatible conversion
+    if audio_param is not None or needs_transcode:
+        try:
+            track_idx = int(audio_param) if audio_param is not None else 0
+        except ValueError:
+            track_idx = 0
+            
+        try:
+            start_sec = max(0.0, float(start_param))
+        except ValueError:
+            start_sec = 0.0
+            
+        def generate_ffmpeg_stream():
+            cmd = [
+                "ffmpeg",
+                "-ss", f"{start_sec:.2f}",
+                "-i", path,
+                "-map", "0:v:0",
+                "-map", f"0:a:{track_idx}",
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-f", "mp4",
+                "-movflags", "frag_keyframe+empty_moov+default_base_moof",
+                "pipe:1"
+            ]
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                bufsize=64 * 1024
+            )
+            try:
+                while True:
+                    chunk = proc.stdout.read(64 * 1024)
+                    if not chunk:
+                        break
+                    yield chunk
+            finally:
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=1)
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+                        
+        resp = Response(generate_ffmpeg_stream(), mimetype="video/mp4")
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+        return resp
+    
+    # Direct HTTP 206 byte-range streaming
+    size = os.path.getsize(path)
     mime_type, _ = mimetypes.guess_type(path)
     if not mime_type:
         mime_type = "video/mp4" if path.endswith((".mp4", ".m4v")) else "video/webm"
         if path.endswith(".mkv"):
-            # Most modern browsers play mkv with x264/x265 inside video/mp4 container or webm
             mime_type = "video/mp4"
 
     range_header = request.headers.get("Range", None)
     
     if not range_header:
-        # Full content response
         def generate():
             with open(path, "rb") as f:
                 while chunk := f.read(Config.STREAM_CHUNK_SIZE):
