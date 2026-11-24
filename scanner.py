@@ -3,6 +3,7 @@ import re
 import hashlib
 import subprocess
 import json
+import random
 from config import Config
 from db import init_db, upsert_media, get_db
 
@@ -39,7 +40,6 @@ def clean_media_title(filename):
         season = int(se_match.group(1))
         episode = int(se_match.group(2))
     else:
-        # Check if just season or episode is mentioned (e.g. S02 or E05)
         s_only = re.search(r'\bs(\d{1,2})\b', name, re.IGNORECASE)
         if s_only:
             is_series = True
@@ -66,12 +66,8 @@ def clean_media_title(filename):
     for pattern in junk_patterns:
         clean_str = re.sub(pattern, ' ', clean_str, flags=re.IGNORECASE)
         
-    # Replace dots, underscores, dashes with space
     clean_str = re.sub(r'[\.\-_+]', ' ', clean_str)
-    # Collapse whitespace
     clean_str = re.sub(r'\s+', ' ', clean_str).strip()
-    
-    # Capitalize title
     clean_title = clean_str.title() if clean_str else name
     
     return {
@@ -83,8 +79,23 @@ def clean_media_title(filename):
         "year": year
     }
 
+def get_video_duration(video_path):
+    """Uses ffprobe to quickly extract the total duration of the video in seconds"""
+    try:
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            video_path
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=5)
+        if res.returncode == 0 and res.stdout.strip():
+            return float(res.stdout.strip())
+    except Exception:
+        pass
+    return 0.0
+
 def generate_svg_thumbnail(title, resolution, year, output_path):
-    """Generates an aesthetic modern poster SVG as fallback if ffmpeg is busy/absent"""
     colors = [
         ("#1a102f", "#4f46e5"),
         ("#1f1018", "#e11d48"),
@@ -124,43 +135,60 @@ def generate_svg_thumbnail(title, resolution, year, output_path):
     with open(output_path, "w") as f:
         f.write(svg)
 
-def extract_thumbnail(video_path, output_name, title, resolution, year):
+def extract_thumbnail(video_path, output_name, title, resolution, year, duration=0.0, force=False):
+    """
+    Extracts high-definition thumbnail from the MIDDLE (halfway point) of the video,
+    avoiding black intro screens, studio logos, and opening credits.
+    """
     os.makedirs(Config.THUMBNAIL_DIR, exist_ok=True)
     thumb_path = os.path.join(Config.THUMBNAIL_DIR, output_name)
     
-    if os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 100:
+    if not force and os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 1000:
         return output_name
         
-    # Attempt extraction via ffmpeg
+    if duration <= 0:
+        duration = get_video_duration(video_path)
+        
+    # Calculate target timestamp: randomly between 40% and 60% (middle half) of the video
+    if duration > 10:
+        target_sec = duration * random.uniform(0.42, 0.58)
+    elif duration > 0:
+        target_sec = duration * 0.5
+    else:
+        target_sec = 600.0  # fallback 10 mins in
+        
+    seek_str = f"{target_sec:.2f}"
+    
     try:
-        # Seek to 45s (or 5s if small video)
         cmd = [
-            "ffmpeg", "-y", "-ss", "00:00:45",
+            "ffmpeg", "-y",
+            "-ss", seek_str,
             "-i", video_path,
-            "-vframes", "1",
+            "-frames:v", "1",
+            "-update", "1",
             "-q:v", "2",
             "-vf", "scale=640:-1",
             thumb_path
         ]
-        res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+        res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=12)
         if res.returncode == 0 and os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 500:
             return output_name
             
-        # Try at 5s if 45s failed
-        cmd[3] = "00:00:05"
-        res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
-        if res.returncode == 0 and os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 500:
-            return output_name
+        # If middle seek failed, try at 25% of the video
+        if duration > 10:
+            cmd[3] = f"{duration * 0.25:.2f}"
+            res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+            if res.returncode == 0 and os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 500:
+                return output_name
     except Exception:
         pass
         
-    # Fallback to high-quality SVG thumbnail
     svg_name = output_name.replace(".jpg", ".svg")
     svg_path = os.path.join(Config.THUMBNAIL_DIR, svg_name)
     generate_svg_thumbnail(title, resolution, year, svg_path)
     return svg_name
 
-def scan_folder(folder_path, default_category=None):
+def scan_folder(folder_path, default_category=None, force_refresh=False):
     if not os.path.exists(folder_path):
         return []
         
@@ -181,6 +209,7 @@ def scan_folder(folder_path, default_category=None):
                     continue
                     
                 meta = clean_media_title(f)
+                duration = get_video_duration(full_path)
                 
                 # Determine category
                 if default_category:
@@ -192,7 +221,6 @@ def scan_folder(folder_path, default_category=None):
                     
                 series_name = None
                 if cat == "series":
-                    # If file is inside a subfolder under Series, use that subfolder as series name!
                     rel = os.path.relpath(full_path, folder_path)
                     parts = rel.split(os.sep)
                     if len(parts) > 1 and parts[0]:
@@ -200,10 +228,13 @@ def scan_folder(folder_path, default_category=None):
                     else:
                         series_name = meta["clean_title"]
                 
-                # Unique thumbnail name based on path hash
                 h = hashlib.md5(full_path.encode()).hexdigest()[:12]
                 thumb_file = f"thumb_{h}.jpg"
-                actual_thumb = extract_thumbnail(full_path, thumb_file, meta["clean_title"], meta["resolution"], meta["year"])
+                actual_thumb = extract_thumbnail(
+                    full_path, thumb_file, meta["clean_title"],
+                    meta["resolution"], meta["year"],
+                    duration=duration, force=force_refresh
+                )
                 
                 item = {
                     "file_path": full_path,
@@ -214,7 +245,7 @@ def scan_folder(folder_path, default_category=None):
                     "season": meta["season"],
                     "episode": meta["episode"],
                     "file_size": size,
-                    "duration": 0,
+                    "duration": duration,
                     "resolution": meta["resolution"],
                     "year": meta["year"],
                     "genre": "Web Series" if cat == "series" else "Feature Film",
@@ -251,7 +282,7 @@ def cleanup_orphaned_media():
                             pass
         conn.commit()
 
-def run_library_scan():
+def run_library_scan(force_refresh=False):
     """Scans ONLY the dedicated /sdcard/FlixBox/Movies and /sdcard/FlixBox/Series folders"""
     init_db()
     cleanup_orphaned_media()
@@ -259,10 +290,10 @@ def run_library_scan():
     
     # 1. Primary Movies folder ONLY
     if os.path.exists(Config.MOVIES_DIR):
-        total += len(scan_folder(Config.MOVIES_DIR, default_category="movie"))
+        total += len(scan_folder(Config.MOVIES_DIR, default_category="movie", force_refresh=force_refresh))
         
     # 2. Primary Series folder ONLY
     if os.path.exists(Config.SERIES_DIR):
-        total += len(scan_folder(Config.SERIES_DIR, default_category="series"))
+        total += len(scan_folder(Config.SERIES_DIR, default_category="series", force_refresh=force_refresh))
         
     return total

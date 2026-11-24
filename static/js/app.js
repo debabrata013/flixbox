@@ -100,6 +100,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
+  function formatDuration(seconds) {
+    if (!seconds || seconds <= 0) return '';
+    const s = Math.floor(seconds);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+  }
+
   function renderCard(item, isProgress = false) {
     const thumbUrl = item.thumbnail_file ? `/thumbnails/${item.thumbnail_file}` : '';
     const progressFill = isProgress && item.progress_percentage ? `
@@ -107,6 +116,9 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="card-progress-fill" style="width: ${item.progress_percentage}%"></div>
       </div>
     ` : '';
+    const durStr = formatDuration(item.duration);
+    const metaYear = item.year ? `${item.year}` : '';
+    const midDot = metaYear && durStr ? ' • ' : '';
     
     return `
       <div class="media-card" data-id="${item.id}" data-type="media">
@@ -117,7 +129,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="card-info">
           <div class="card-title">${item.clean_title || item.title}</div>
           <div class="card-meta">
-            <span>${item.year || ''}</span>
+            <span>${metaYear}${midDot}${durStr}</span>
             <span class="card-tag">${item.resolution || 'HD'}</span>
           </div>
         </div>
