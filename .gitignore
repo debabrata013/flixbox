@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.db
+*.sqlite3
+*.log
+*.pid
+static/thumbnails/*
+!static/thumbnails/.gitkeep
+.DS_Store
+.env
